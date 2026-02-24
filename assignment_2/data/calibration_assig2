@@ -168,7 +168,7 @@ def main():
     corners_list = []
     for i, frame in enumerate(frames):
         corners2, found, used_manual = get_corners_from_frame(
-            frame, pattern_size, allow_manual=True,
+            frame, pattern_size, allow_manual=False, # don´t take clicks
             tmp_path=f"_temp_intr_cam{cam}_{i}.png"
         )
         if found and corners2 is not None:
@@ -197,6 +197,7 @@ def main():
     save_intrinsics_xml(intr_xml, mtx, dist)
     print("[SAVED]", intr_xml)
 
+    
     # -------------------------
     # B) EXTRINSICS
     # -------------------------
@@ -230,6 +231,30 @@ def main():
     save_config_xml(cfg_xml, mtx, dist, rvec, tvec)
     print("[SAVED]", cfg_xml)
 
+    
+    # axis
+    axis_len = axis_len = 6 * square_size
+    axis = np.float32([[0,0,0], [axis_len,0,0], [0,axis_len,0], [0,0,-axis_len]])
+
+    imgpts_axis, _ = cv.projectPoints(axis, rvec, tvec, mtx, dist)
+    img = draw_axis(frame, imgpts_axis[0], imgpts_axis[1], imgpts_axis[2], imgpts_axis[3])
+    cv.imshow("Axis", img)
+    cv.waitKey(0)
+    
+    cv.destroyAllWindows()
+
+
+def draw_axis(img, origin, xpt, ypt, zpt):
+    """Draw XYZ axes on the image."""
+    o = tuple(origin.ravel().astype(int))
+    x = tuple(xpt.ravel().astype(int))
+    y = tuple(ypt.ravel().astype(int))
+    z = tuple(zpt.ravel().astype(int))
+
+    img = cv.line(img, o, x, (0, 0, 255), 3)   # X red
+    img = cv.line(img, o, y, (0, 255, 0), 3)   # Y green
+    img = cv.line(img, o, z, (255, 0, 0), 3)   # Z blue
+    return img
 
 if __name__ == "__main__":
     main()
