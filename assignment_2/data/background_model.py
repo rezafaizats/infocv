@@ -15,6 +15,7 @@ def get_background_model(video_path: str, num_frames: int = 100):
 
     Returns: the background model as a numpy array (image).
     """
+    # read the video
     cap = cv.VideoCapture(video_path)
     if not cap.isOpened():
         raise FileNotFoundError(f"Can't open the video: {video_path}")
@@ -39,15 +40,16 @@ def get_background_model(video_path: str, num_frames: int = 100):
 def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, th_v=50):
     """
     Performs background subtraction using HSV color space.
-
+    We have 3 thresholds for hue, saturation, and value to determine if a pixel belongs to the foreground.
+    We choose them base on the expected variations in the background and the desired sensitivity to changes.
     Returns: a binary mask of the foreground objects.
     """
-
+    # read the video
     cap = cv.VideoCapture(video_path)
     if not cap.isOpened():
         raise FileNotFoundError(f"Can't open the video: {video_path}")
 
-    # Convert background model to HSV
+    # Convert background model to HSV color space
     hsv_background = cv.cvtColor(background_model, cv.COLOR_BGR2HSV)
     # Split the background model into H, S, and V channels
     hb, sb, vb = cv.split(hsv_background) 
@@ -57,6 +59,7 @@ def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, t
         if not ret:
             break
 
+        # convert the current frame to HSV color space
         hsv_frame = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         h, s, v = cv.split(hsv_frame)
         
@@ -66,13 +69,25 @@ def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, t
         diff_s = cv.absdiff(s, sb)
         diff_v = cv.absdiff(v, vb)
 
-        # Convert differences to binary masks based on thresholds
+        # Convert differences to binary masks(0 or 1) based on thresholds and then to 0 or 255 values
         mask_h = (diff_h > th_h).astype(np.uint8) * 255 
         mask_s = (diff_s > th_s).astype(np.uint8) * 255     
         mask_v = (diff_v > th_v).astype(np.uint8) * 255
+        # - 0 → the pixel belongs to the background 
+        # - 255 → the pixel belongs to the foreground
 
         # We combine the masks using a logical OR op to get the final binary foreground mask
-        foreground_mask = cv.bitwise_or(mask_h, cv.bitwise_or(mask_s, mask_v))
+        foreground_mask = (mask_h | mask_s | mask_v)
+
+        # POST-PROCESSING: Apply morphological operations to reduce noise and improve the foreground mask
+        # We use an elliptical kernel because ??
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
+
+        # We remove small noise using erosion
+        foreground_mask = cv.erode(foreground_mask, kernel, iterations=1)  
+        # We fill gaps in the foreground objects using dilation
+        foreground_mask = cv.dilate(foreground_mask, kernel, iterations=2)
+        
 
 
         # Display results
