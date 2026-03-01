@@ -81,7 +81,7 @@ def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, t
 
         # POST-PROCESSING: Apply morphological operations to reduce noise and improve the foreground mask
         # We use an elliptical kernel because ??
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
 
         # We use morphological opening to remove small noise and closing to fill small holes in the detected foreground objects.
         foreground_mask = cv.morphologyEx(foreground_mask, cv.MORPH_OPEN, kernel, iterations=1)

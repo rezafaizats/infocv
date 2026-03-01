@@ -150,7 +150,7 @@ def save_config_xml(path_out, mtx, dist, rvec, tvec):
 
 def main():
     data_root = "assignment_2/data"
-    cam = 1  # later cam 2,3,4 
+    cam = 4  # later cam 2,3,4 
     cam_dir = os.path.join(data_root, f"cam{cam}")
 
     print("Pattern_size:", pattern_size, "square_size(m):", square_size)
