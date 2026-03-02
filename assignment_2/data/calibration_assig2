@@ -27,17 +27,17 @@ def get_corners_from_frame(frame, pattern_size, allow_manual, tmp_path="_temp_cl
 
     if ret:
         corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        return corners2, True, False
+        return corners2, True
 
     if not allow_manual:
-        return None, False, False
+        return None, False
 
     # Manual
     cv.imwrite(tmp_path, frame)
     print(f"[MANUAL] OpenCV failed. Click 4 OUTER corners on {tmp_path}")
     clicks = get_four_clicks(tmp_path)
     corners2 = linear_interpolation(clicks, pattern_size)
-    return corners2, True, True
+    return corners2, True
 
 
 # -----------------------------------------------------------
@@ -150,7 +150,7 @@ def save_config_xml(path_out, mtx, dist, rvec, tvec):
 
 def main():
     data_root = "assignment_2/data"
-    cam = 4  # later cam 2,3,4 
+    cam = 4
     cam_dir = os.path.join(data_root, f"cam{cam}")
 
     print("Pattern_size:", pattern_size, "square_size(m):", square_size)
@@ -167,7 +167,7 @@ def main():
 
     corners_list = []
     for i, frame in enumerate(frames):
-        corners2, found, used_manual = get_corners_from_frame(
+        corners2, found = get_corners_from_frame(
             frame, pattern_size, allow_manual=False, # don´t take clicks
             tmp_path=f"_temp_intr_cam{cam}_{i}.png"
         )
@@ -212,7 +212,7 @@ def main():
         raise RuntimeError("Cannot read frame for extrinsics")
 
     # allow_manual=True for clicks, as OpencV can fail
-    corners2, found, used_manual = get_corners_from_frame(
+    corners2, found = get_corners_from_frame(
         frame, pattern_size, allow_manual=True,
         tmp_path=f"_temp_extr_cam{cam}.png"
     )
