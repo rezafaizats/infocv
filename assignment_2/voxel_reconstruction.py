@@ -3,6 +3,8 @@ import cv2 as cv
 import os
 
 from background_model import get_background_model, find_best_thresholds, segment_frame_hsv, hsv_background_subtraction
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 def get_camera_params(cam_id):
     config_file = os.path.join(f"data/cam{cam_id}/intrinsics.xml")
@@ -45,18 +47,20 @@ def get_foreground_mask(cam_id):
     cv.waitKey(200)
     return mask
 
-def reconstruct_voxel(masks, calibration_params, voxel_step=8, grid_dims=(128, 64, 128), min_views=3):
-    voxel_lut = {cam: {} for cam in calibration_params.keys()}
-    x_range = np.arange(0, grid_dims[0], voxel_step)
-    y_range = np.arange(0, grid_dims[1], voxel_step)
-    z_range = np.arange(0, grid_dims[2], voxel_step)
-    
-    for cam_id, params in calibration_params.items():
+
+def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(64, 64, 64), min_views=2):
+    voxel_lut = {cam: {} for cam in camera_params.keys()}
+    x_range = np.arange(0, grid_dims[0], voxel_size)
+    y_range = np.arange(0, grid_dims[1], voxel_size)
+    z_range = np.arange(0, grid_dims[2], voxel_size)
+
+    for cam_id, params in camera_params.items():
         mtx, dist, rvec, tvec = params
         for x in x_range:
             for y in y_range:
                 for z in z_range:
                     point_3d = np.array([[x, y, z]], dtype=np.float32)
+                    print(f"Projecting voxel ({x:.2f}, {y:.2f}, {z:.2f}) for camera {cam_id}...")
                     imgpt, _ = cv.projectPoints(point_3d, rvec, tvec, mtx, dist)
                     imgpt = imgpt.ravel().astype(int)
                     voxel_lut[cam_id][(x, y, z)] = tuple(imgpt)
@@ -66,7 +70,7 @@ def reconstruct_voxel(masks, calibration_params, voxel_step=8, grid_dims=(128, 6
         for y in y_range:
             for z in z_range:
                 count = 0
-                for cam_id in calibration_params.keys():
+                for cam_id in camera_params.keys():
                     imgpt = voxel_lut[cam_id][(x, y, z)]
                     mask = masks[cam_id]
                     h, w = mask.shape
@@ -74,10 +78,47 @@ def reconstruct_voxel(masks, calibration_params, voxel_step=8, grid_dims=(128, 6
                     if u < 0 or u >= w or v < 0 or v >= h:
                         continue
                     if mask[v, u] > 0:
+                        print(f"Voxel ({x:.2f}, {y:.2f}, {z:.2f}) is ON in camera {cam_id} at pixel ({u}, {v}).")
                         count += 1
                 if count >= min_views:
                     voxels_on.append([x, y, z])
     return voxels_on
+
+
+
+def visualize_point_cloud(points, show=True, elev=30, azim=-60):
+    if points is None or len(points) == 0:
+        print("No points to visualize.")
+        return
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, c='black')
+    ax.view_init(elev=elev, azim=azim)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+
+def save_ply(filename, points):
+    if points is None or len(points) == 0:
+        print("No points to save.")
+        return
+    with open(filename, 'w') as f:
+        f.write('ply\n')
+        f.write('format ascii 1.0\n')
+        f.write(f'element vertex {len(points)}\n')
+        f.write('property float x\n')
+        f.write('property float y\n')
+        f.write('property float z\n')
+        f.write('end_header\n')
+        for p in points:
+            f.write(f"{p[0]} {p[1]} {p[2]}\n")
+    print(f"Saved {len(points)} points to {filename}")
+
+
 
 def main():
     cam_ids = [1, 2, 3, 4]
@@ -92,16 +133,20 @@ def main():
         else:
             print(f"Camera {cam_id} parameters loaded successfully.")
             camera_params[cam_id] = (params[0], params[1], params[2], params[3])
-
+        
     # Get background models and masks for each camera
     masks = {}
     for cam_id in cam_ids:
         masks[cam_id] = get_foreground_mask(cam_id)
+        # masks[cam_id] = masks[cam_id].convert("L")
 
     voxels = reconstruct_voxel(
-        masks, camera_params, voxel_step=8, grid_dims=(128, 64, 128), min_views=3
+        masks, camera_params, voxel_size=4, grid_dims=(128, 64, 128), min_views=2
     )
     print(f"Number of voxels reconstructed: {len(voxels)}")
+    if len(voxels) > 0:
+        save_ply('reconstructed.ply', voxels)
+        # visualize_point_cloud(voxels)
     
 if __name__ == "__main__":
     main()
