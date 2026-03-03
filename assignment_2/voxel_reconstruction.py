@@ -2,7 +2,7 @@ import numpy as np
 import cv2 as cv
 import os
 
-from background_model import get_background_model
+from background_model import get_background_model, find_best_thresholds, segment_frame_hsv, hsv_background_subtraction
 
 def get_camera_params(cam_id):
     config_file = os.path.join(f"data/cam{cam_id}/intrinsics.xml")
@@ -21,31 +21,28 @@ def get_camera_params(cam_id):
     return mtx, dist, rvec, tvec
 
 def get_foreground_mask(cam_id):
+    print(f"Processing camera {cam_id}...")
     video_path = os.path.join(f"data/cam{cam_id}/video.avi")
     video_bg_path = os.path.join(f"data/cam{cam_id}/background.avi")
+    
     background_model = get_background_model(video_bg_path)
-    cap = cv.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise FileNotFoundError(f"Can't open the video: {video_path}")
+    
+    frame = cv.imread(f"data/cam{cam_id}/img_original.png")
+    manual = cv.imread(f"data/cam{cam_id}/img_manual.png", cv.IMREAD_GRAYSCALE)
 
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        raise ValueError(f"Failed to read a frame from {video_path} to compute foreground mask.")
+    H, W = background_model.shape[:2]
+    frame = cv.resize(frame, (W, H), interpolation=cv.INTER_LINEAR)
+    manual = cv.resize(manual, (W, H), interpolation=cv.INTER_NEAREST)
 
-    # Compute absolute difference and convert to grayscale
-    diff = cv.absdiff(frame, background_model)
-    gray_diff = cv.cvtColor(diff, cv.COLOR_BGR2GRAY)
-
-    # Threshold to get binary mask
-    _, mask = cv.threshold(gray_diff, 30, 255, cv.THRESH_BINARY)
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
-    mask = cv.morphologyEx(mask, cv.MORPH_DILATE, kernel)
-
+    # Find the best thresholds using grid search
+    best_ths, best_err = find_best_thresholds(frame, background_model, manual)
+    th_h, th_s, th_v = best_ths
+    print(f"Best thresholds: H={th_h}, S={th_s}, V={th_v}, with XOR error: {best_err}")
+    
+    # Perform background subtraction using the HSV color space
+    mask = hsv_background_subtraction(video_path, background_model, th_h, th_s, th_v)
     cv.imshow(f"Foreground Mask - {cam_id}", mask)
     cv.waitKey(200)
-    
     return mask
 
 def reconstruct_voxel(masks, calibration_params, voxel_step=8, grid_dims=(128, 64, 128), min_views=3):

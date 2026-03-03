@@ -98,6 +98,7 @@ def hsv_background_subtraction(video_path, background_model, th_h, th_s, th_v):
 
     cap.release()
     cv.destroyAllWindows()
+    return foreground_mask
 
 
 def segment_frame_hsv(frame_bgr, background_bgr, th_h, th_s, th_v):

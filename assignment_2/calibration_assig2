@@ -26,7 +26,12 @@ def get_corners_from_frame(frame, pattern_size, allow_manual, tmp_path="_temp_cl
 
     if ret:
         corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        return corners2, True
+        
+        cv.drawChessboardCorners(frame, pattern_size, corners2, ret)
+        cv.imshow("Calibration", frame)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+        return corners2, True, False
 
     if not allow_manual:
         return None, False
@@ -34,12 +39,41 @@ def get_corners_from_frame(frame, pattern_size, allow_manual, tmp_path="_temp_cl
     # Manual
     cv.imwrite(tmp_path, frame)
     print(f"[MANUAL] OpenCV failed. Click 4 OUTER corners on {tmp_path}")
-    imgpoints = []
-    objpoints = []
 
     clicks = get_four_clicks(tmp_path)
     corners2 = linear_interpolation(clicks, pattern_size)
-    return corners2, True
+    return corners2, True, True
+
+def find_corners_undistorted(frame, mtx, dist, pattern_size, tmp_path="_temp_click.png"):
+    """
+    Undistort the frame and find corners. 
+    Useful for extrinsics, as the checkerboard.avi is more distorted.
+    """
+    h, w = frame.shape[:2]
+    new_mtx, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+    undistorted = cv.undistort(frame, mtx, dist, None, new_mtx)
+    
+    cv.imshow("Undistorted Corners", undistorted)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+    found, corners2 = cv.findChessboardCorners(undistorted, pattern_size, None)
+    
+    if found:
+        corners2 = cv.cornerSubPix(cv.cvtColor(undistorted, cv.COLOR_BGR2GRAY), corners2, (11, 11), (-1, -1), criteria)
+        
+        # Draw for visualization
+        cv.drawChessboardCorners(undistorted, pattern_size, corners2, found)
+        cv.imshow("Undistorted Corners", undistorted)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+        return corners2, True, True
+    else:
+        print("Failed to find corners in undistorted image. Falling back to manual clicks.")
+        cv.imwrite(tmp_path, frame)
+        clicks = get_four_clicks(tmp_path)
+        corners2 = linear_interpolation(clicks, pattern_size)
+        return corners2, True, True
 
 
 # -----------------------------------------------------------
@@ -102,7 +136,6 @@ def iterative_rejection(corners_list, objp, image_size, thr=0.8):
 
     return current
 
-
 # -----------------------------------------------------------
 # 3) EXTRACT FRAMES FROM THE VIDEO 
 def sample_frames_from_video(video_path, num_samples=30):
@@ -154,8 +187,8 @@ def save_config_xml(path_out, mtx, dist, rvec, tvec):
 
 
 def main():
-    data_root = "assignment_2/data"
-    cam = 4
+    data_root = "data"
+    cam = 1  # later cam 2,3,4 
     cam_dir = os.path.join(data_root, f"cam{cam}")
 
     print("Pattern_size:", pattern_size, "square_size(m):", square_size)
@@ -221,14 +254,16 @@ def main():
     cap.release()
     if not ok or frame is None:
         raise RuntimeError("Cannot read frame for extrinsics")
-
+    
     # allow_manual=True for clicks, as OpencV can fail
-    corners2, found = get_corners_from_frame(
-        frame, pattern_size, allow_manual=True,
-        tmp_path=f"_temp_extr_cam{cam}.png"
-    )
-    if not found or corners2 is None:
-        raise RuntimeError("Couldn´t detect corners for extrinsics")
+    # corners2, found, used_manual = get_corners_from_frame(
+    #     frame, pattern_size, allow_manual=True,
+    #     tmp_path=f"_temp_extr_cam{cam}.png"
+    # )
+    # if not found or corners2 is None:
+    #     raise RuntimeError("Couldn´t detect corners for extrinsics")
+
+    corners2, found, used_manual = find_corners_undistorted(frame, mtx, dist, pattern_size)
 
     ok, rvec, tvec = cv.solvePnP(objp, corners2, mtx, dist)
     if not ok:

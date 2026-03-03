@@ -5,8 +5,8 @@
   <cols>3</cols>
   <dt>d</dt>
   <data>
-    485.69769876498538 0. 334.38042179289749 0. 487.40256808930951
-    214.55888808844756 0. 0. 1.</data></CameraMatrix>
+    490.46234951366216 0. 332.49698125470093 0. 493.22287818192245
+    217.06736992897584 0. 0. 1.</data></CameraMatrix>
 <DistortionCoeffs type_id="opencv-matrix">
   <rows>5</rows>
   <cols>1</cols>
