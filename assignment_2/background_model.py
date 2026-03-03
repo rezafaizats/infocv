@@ -36,7 +36,7 @@ def get_background_model(video_path: str, num_frames: int = 100):
     return background_model
 
 
-def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, th_v=50):
+def hsv_background_subtraction(video_path, background_model, th_h, th_s, th_v):
     """
     Performs background subtraction using HSV color space.
     We have 3 thresholds for hue, saturation, and value to determine if a pixel belongs to the foreground.
@@ -79,12 +79,14 @@ def hsv_background_subtraction(video_path, background_model, th_h=30, th_s=50, t
         foreground_mask = (mask_h | mask_s | mask_v)
 
         # POST-PROCESSING: Apply morphological operations to reduce noise and improve the foreground mask
-        # We use an elliptical kernel because ??
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
+        # We chose the elliptical kernel because it may preserve the shape of the foreground objects good in general,as it has a shape that fit well the natural contours of objects 
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
+        kernel_open  = cv.getStructuringElement(cv.MORPH_CROSS, (3,3))
+        kernel_close = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5,5))
 
         # We use morphological opening to remove small noise and closing to fill small holes in the detected foreground objects.
-        foreground_mask = cv.morphologyEx(foreground_mask, cv.MORPH_OPEN, kernel, iterations=1)
-        foreground_mask = cv.morphologyEx(foreground_mask, cv.MORPH_CLOSE, kernel, iterations=2)
+        foreground_mask = cv.morphologyEx(foreground_mask, cv.MORPH_OPEN, kernel_open, iterations=1)
+        foreground_mask = cv.morphologyEx(foreground_mask, cv.MORPH_CLOSE, kernel_close, iterations=2)
         
 
         # Display results
@@ -174,6 +176,7 @@ def main():
     frame = cv.imread("data/cam4/img_original.png")
     manual = cv.imread("data/cam4/img_manual.png", cv.IMREAD_GRAYSCALE)
 
+    # As both images were extracted as screenshoots, just in case, we resize the frame and manual mask to match the background model size 
     H, W = background.shape[:2]
     frame = cv.resize(frame, (W, H), interpolation=cv.INTER_LINEAR)
     manual = cv.resize(manual, (W, H), interpolation=cv.INTER_NEAREST)
@@ -192,6 +195,7 @@ def main():
     cv.imshow("XOR Error Mask", xor)
     cv.waitKey(0)
     cv.destroyAllWindows()
+    cv.waitKey(1)
     
     # Perform background subtraction using the HSV color space
     hsv_background_subtraction(FILE_VIDEO_PATH, background, th_h, th_s, th_v)
