@@ -78,9 +78,9 @@ def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(64, 64, 64)
                     if u < 0 or u >= w or v < 0 or v >= h:
                         continue
                     if mask[v, u] > 0:
-                        print(f"Voxel ({x:.2f}, {y:.2f}, {z:.2f}) is ON in camera {cam_id} at pixel ({u}, {v}).")
                         count += 1
                 if count >= min_views:
+                    print(f"Adding voxel at ({x:.2f}, {y:.2f}, {z:.2f})")
                     voxels_on.append([x, y, z])
     return voxels_on
 
@@ -141,7 +141,7 @@ def main():
         # masks[cam_id] = masks[cam_id].convert("L")
 
     voxels = reconstruct_voxel(
-        masks, camera_params, voxel_size=4, grid_dims=(128, 64, 128), min_views=2
+        masks, camera_params, voxel_size=2, grid_dims=(128, 64, 128), min_views=2
     )
     print(f"Number of voxels reconstructed: {len(voxels)}")
     if len(voxels) > 0:
