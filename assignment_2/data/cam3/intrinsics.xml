@@ -15,11 +15,18 @@
   <cols>1</cols>
   <dt>f</dt>
   <data>
-    0.
-    0.
-    0.
-    0.
-    0.
-  </data>
-</DistortionCoeffs>
+    -0.36661444780749941 0.18157873874946878 0.0019758499505665578
+    0.00051897941394662527 -0.044262162354865797</data></DistortionCoeffs>
+<rvec type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>1</cols>
+  <dt>d</dt>
+  <data>
+    -0.18861326367333725 -0.20344556911371189 1.5678818431742418</data></rvec>
+<tvec type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>1</cols>
+  <dt>d</dt>
+  <data>
+    0.058680422282547592 -0.3578854180181682 1.2227014192198098</data></tvec>
 </opencv_storage>
