@@ -29,9 +29,9 @@ def get_corners_from_frame(frame, pattern_size, allow_manual, tmp_path="_temp_cl
         
         cv.drawChessboardCorners(frame, pattern_size, corners2, ret)
         cv.imshow("Calibration", frame)
-        cv.waitKey(0)
+        cv.waitKey(100)
         cv.destroyAllWindows()
-        return corners2, True, False
+        return corners2, True
 
     if not allow_manual:
         return None, False
@@ -42,38 +42,42 @@ def get_corners_from_frame(frame, pattern_size, allow_manual, tmp_path="_temp_cl
 
     clicks = get_four_clicks(tmp_path)
     corners2 = linear_interpolation(clicks, pattern_size)
-    return corners2, True, True
+    return corners2, True
 
 def find_corners_undistorted(frame, mtx, dist, pattern_size, tmp_path="_temp_click.png"):
     """
-    Undistort the frame and find corners. 
+    First try to find corners on the original frame. If it fails, undistort the frame and find corners.
     Useful for extrinsics, as the checkerboard.avi is more distorted.
     """
+    
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+
+    ret, corners = cv.findChessboardCorners(gray, pattern_size, None)
+
+    if ret:
+        corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        return corners2, True, frame
+    
     h, w = frame.shape[:2]
     new_mtx, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
     undistorted = cv.undistort(frame, mtx, dist, None, new_mtx)
-    
-    cv.imshow("Undistorted Corners", undistorted)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
 
     found, corners2 = cv.findChessboardCorners(undistorted, pattern_size, None)
     
     if found:
+        # refine subpixel locations on the undistorted image
         corners2 = cv.cornerSubPix(cv.cvtColor(undistorted, cv.COLOR_BGR2GRAY), corners2, (11, 11), (-1, -1), criteria)
         
-        # Draw for visualization
-        cv.drawChessboardCorners(undistorted, pattern_size, corners2, found)
-        cv.imshow("Undistorted Corners", undistorted)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
-        return corners2, True, True
+        # distort the corners back to the original image space for solvePnP
+        distorted = cv.undistort(undistorted, new_mtx, -dist, None, mtx)
+        corners2 = cv.undistortPoints(corners2, new_mtx, -dist, None, mtx)
+        return corners2, True, distorted
     else:
         print("Failed to find corners in undistorted image. Falling back to manual clicks.")
         cv.imwrite(tmp_path, frame)
         clicks = get_four_clicks(tmp_path)
         corners2 = linear_interpolation(clicks, pattern_size)
-        return corners2, True, True
+        return corners2, True, frame
 
 
 # -----------------------------------------------------------
@@ -179,8 +183,8 @@ def save_config_xml(path_out, mtx, dist, rvec, tvec):
     config.xml for voxel reconstruction (tags generics).
     """
     fs = cv.FileStorage(path_out, cv.FILE_STORAGE_WRITE)
-    fs.write("camera_matrix", mtx)
-    fs.write("dist_coeffs", dist.reshape(-1, 1))
+    fs.write("CameraMatrix", mtx)
+    fs.write("DistortionCoeffs", dist.reshape(-1, 1))
     fs.write("rvec", rvec.reshape(3, 1))
     fs.write("tvec", tvec.reshape(3, 1))
     fs.release()
@@ -188,7 +192,7 @@ def save_config_xml(path_out, mtx, dist, rvec, tvec):
 
 def main():
     data_root = "data"
-    cam = 1  # later cam 2,3,4 
+    cam = 4  # later cam 2,3,4 
     cam_dir = os.path.join(data_root, f"cam{cam}")
 
     print("Pattern_size:", pattern_size, "square_size(m):", square_size)
@@ -263,7 +267,7 @@ def main():
     # if not found or corners2 is None:
     #     raise RuntimeError("Couldn´t detect corners for extrinsics")
 
-    corners2, found, used_manual = find_corners_undistorted(frame, mtx, dist, pattern_size)
+    corners2, found, img = find_corners_undistorted(frame, mtx, dist, pattern_size, tmp_path=f"_temp_intr_cam{cam}.png")
 
     ok, rvec, tvec = cv.solvePnP(objp, corners2, mtx, dist)
     if not ok:
@@ -280,13 +284,20 @@ def main():
     # axis
     axis_len = axis_len = 6 * square_size
     axis = np.float32([[0,0,0], [axis_len,0,0], [0,axis_len,0], [0,0,-axis_len]])
-
     imgpts_axis, _ = cv.projectPoints(axis, rvec, tvec, mtx, dist)
-    img = draw_axis(frame, imgpts_axis[0], imgpts_axis[1], imgpts_axis[2], imgpts_axis[3])
-    cv.imshow("Axis", img)
-    cv.waitKey(0)
     
-    cv.destroyAllWindows()
+    if(found) :
+        img = draw_axis(img, imgpts_axis[0], imgpts_axis[1], imgpts_axis[2], imgpts_axis[3])
+        cv.imshow("Axis", img)
+        cv.waitKey(0)
+        
+        cv.destroyAllWindows()
+    else :
+        img = draw_axis(frame, imgpts_axis[0], imgpts_axis[1], imgpts_axis[2], imgpts_axis[3])
+        cv.imshow("Axis", img)
+        cv.waitKey(0)
+        
+        cv.destroyAllWindows()
 
 
 def draw_axis(img, origin, xpt, ypt, zpt):
