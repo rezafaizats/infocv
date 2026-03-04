@@ -14,7 +14,7 @@ thresholds = {
 }
 
 def get_camera_params(cam_id):
-    config_file = os.path.join(f"data/cam{cam_id}/intrinsics.xml")
+    config_file = os.path.join(f"data/cam{cam_id}/config.xml")
     fs = cv.FileStorage(config_file, cv.FILE_STORAGE_READ)
     if not fs.isOpened():
         print(f"Failed to open {config_file} for {cam_id}.")
@@ -36,33 +36,7 @@ def compute_mask(frame_bgr, bg_bgr, cam_id):
     th_h, th_s, th_v = thresholds[cam_id]
     return segment_frame_hsv(frame_bgr, bg_bgr, th_h, th_s, th_v)
 
-def get_foreground_mask(cam_id):
-    print(f"Processing camera {cam_id}...")
-    video_path = os.path.join(f"data/cam{cam_id}/video.avi")
-    video_bg_path = os.path.join(f"data/cam{cam_id}/background.avi")
-    
-    background_model = get_background_model(video_bg_path)
-    
-    frame = cv.imread(f"data/cam{cam_id}/img_original.png")
-    manual = cv.imread(f"data/cam{cam_id}/img_manual.png", cv.IMREAD_GRAYSCALE)
-
-    H, W = background_model.shape[:2]
-    frame = cv.resize(frame, (W, H), interpolation=cv.INTER_LINEAR)
-    manual = cv.resize(manual, (W, H), interpolation=cv.INTER_NEAREST)
-
-    # Find the best thresholds using grid search
-    best_ths, best_err = find_best_thresholds(frame, background_model, manual)
-    th_h, th_s, th_v = best_ths
-    print(f"Best thresholds: H={th_h}, S={th_s}, V={th_v}, with XOR error: {best_err}")
-    
-    # Perform background subtraction using the HSV color space
-    mask = hsv_background_subtraction(video_path, background_model, th_h, th_s, th_v)
-    cv.imshow(f"Foreground Mask - {cam_id}", mask)
-    cv.waitKey(200)
-    return mask
-
-
-def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(64, 64, 64), min_views=2):
+def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(128, 64, 128), min_views=2):
     voxel_lut = {cam: {} for cam in camera_params.keys()}
     x_range = np.arange(0, grid_dims[0], voxel_size)
     y_range = np.arange(0, grid_dims[1], voxel_size)
@@ -74,11 +48,12 @@ def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(64, 64, 64)
             for y in y_range:
                 for z in z_range:
                     point_3d = np.array([[x, y, z]], dtype=np.float32)
-                    print(f"Projecting voxel ({x:.2f}, {y:.2f}, {z:.2f}) for camera {cam_id}...")
                     imgpt, _ = cv.projectPoints(point_3d, rvec, tvec, mtx, dist)
                     imgpt = imgpt.ravel().astype(int)
                     voxel_lut[cam_id][(x, y, z)] = tuple(imgpt)
     
+    print(f"Voxel projection for each camera completed. Starting voxel reconstruction...")
+
     voxels_on = []
     for x in x_range:
         for y in y_range:
@@ -93,28 +68,11 @@ def reconstruct_voxel(masks, camera_params, voxel_size=8, grid_dims=(64, 64, 64)
                         continue
                     if mask[v, u] > 0:
                         count += 1
+                        print(f"Voxel at ({x:.2f}, {y:.2f}, {z:.2f}) projects to ({u}, {v}) with {count} views")
                 if count >= min_views:
-                    print(f"Adding voxel at ({x:.2f}, {y:.2f}, {z:.2f})")
+                    print(f"Adding voxel at ({x:.2f}, {y:.2f}, {z:.2f}) seen in {count} views.")
                     voxels_on.append([x, y, z])
     return voxels_on
-
-
-
-def visualize_point_cloud(points, show=True, elev=30, azim=-60):
-    if points is None or len(points) == 0:
-        print("No points to visualize.")
-        return
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, c='black')
-    ax.view_init(elev=elev, azim=azim)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    plt.tight_layout()
-    if show:
-        plt.show()
-
 
 def save_ply(filename, points):
     if points is None or len(points) == 0:
@@ -175,7 +133,6 @@ def main():
         image_shapes[cam] = frame.shape[:2]  # Store the image shape for this camera
         # Compute the foreground mask for each camera
         masks[cam] = compute_mask(frame, background_models[cam], cam)
-
 
     voxels = reconstruct_voxel(
         masks, camera_params, voxel_size=2, grid_dims=(128, 64, 128), min_views=2
