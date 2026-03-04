@@ -6,6 +6,13 @@ from background_model import get_background_model, find_best_thresholds, segment
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+thresholds = {
+    1: (40, 80, 60),  # cam 1
+    2: (40, 60, 70),  # cam 2
+    3: (40, 40, 80),  # cam 3
+    4: (20, 50, 60),  # cam 4
+}
+
 def get_camera_params(cam_id):
     config_file = os.path.join(f"data/cam{cam_id}/intrinsics.xml")
     fs = cv.FileStorage(config_file, cv.FILE_STORAGE_READ)
@@ -21,6 +28,13 @@ def get_camera_params(cam_id):
         print(f"Extrinsics not found for {cam_id}. Please ensure XML contains rvec and tvec.")
         return None
     return mtx, dist, rvec, tvec
+
+def compute_mask(frame_bgr, bg_bgr, cam_id):
+    """
+    Computes the foreground mask for a given frame and background model using HSV color space.
+    """
+    th_h, th_s, th_v = thresholds[cam_id]
+    return segment_frame_hsv(frame_bgr, bg_bgr, th_h, th_s, th_v)
 
 def get_foreground_mask(cam_id):
     print(f"Processing camera {cam_id}...")
@@ -122,6 +136,8 @@ def save_ply(filename, points):
 
 def main():
     cam_ids = [1, 2, 3, 4]
+    data_root = "data"
+    
     # use lists so index corresponds to camera order (0-based)
     camera_params = {}
 
@@ -133,16 +149,38 @@ def main():
         else:
             print(f"Camera {cam_id} parameters loaded successfully.")
             camera_params[cam_id] = (params[0], params[1], params[2], params[3])
-        
-    # Get background models and masks for each camera
+    
+    # Background substracion 
+    background_models = {}
+    for cam in cam_ids:
+        video_bg_path = os.path.join(data_root, f"cam{cam}/background.avi")
+        background_models[cam] = get_background_model(video_bg_path)
+
+    # Videos
     masks = {}
-    for cam_id in cam_ids:
-        masks[cam_id] = get_foreground_mask(cam_id)
-        # masks[cam_id] = masks[cam_id].convert("L")
+    image_shapes = {}
+    for cam in cam_ids:
+        # Read a frame from the video to compute the foreground mask
+        video_path = os.path.join(data_root, f"cam{cam}/video.avi")
+        cap = cv.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise FileNotFoundError(f"Can't open the video: {video_path}")
+        
+        # Read the first frame to compute the foreground mask
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            raise ValueError(f"Failed to read a frame from {video_path} to compute foreground mask.")
+
+        image_shapes[cam] = frame.shape[:2]  # Store the image shape for this camera
+        # Compute the foreground mask for each camera
+        masks[cam] = compute_mask(frame, background_models[cam], cam)
+
 
     voxels = reconstruct_voxel(
         masks, camera_params, voxel_size=2, grid_dims=(128, 64, 128), min_views=2
     )
+    
     print(f"Number of voxels reconstructed: {len(voxels)}")
     if len(voxels) > 0:
         save_ply('reconstructed.ply', voxels)
